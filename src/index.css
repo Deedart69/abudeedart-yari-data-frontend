@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+}
+.display-font {
+  font-family: "Space Grotesk", sans-serif;
+}
+.mono-font {
+  font-family: "IBM Plex Mono", monospace;
+}
