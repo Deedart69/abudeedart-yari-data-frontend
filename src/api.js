@@ -15,7 +15,7 @@ async function request(path, { method = "GET", body, token } = {}) {
 }
 
 export const api = {
-  register: (email, password) => request("/api/auth/register", { method: "POST", body: { email, password } }),
+  register: (data) => request("/api/auth/register", { method: "POST", body: data }),
   login: (email, password) => request("/api/auth/login", { method: "POST", body: { email, password } }),
   balance: (token) => request("/api/wallet/balance", { token }),
   fundInitialize: (token, amountNaira) =>
