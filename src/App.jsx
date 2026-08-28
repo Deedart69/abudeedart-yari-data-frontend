@@ -18,17 +18,41 @@ const fmt = (kobo) =>
 
 function AuthScreen({ onAuthed }) {
   const [mode, setMode] = useState("login");
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [referralUsername, setReferralUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const registerValid =
+    fullName && username && email && phone && password.length >= 8 && password === confirmPassword && agreed;
+
   const submit = async () => {
     setError("");
+    if (mode === "register") {
+      if (password !== confirmPassword) return setError("Passwords do not match");
+      if (!agreed) return setError("You must agree to the Terms and Privacy Policy");
+    }
     setBusy(true);
     try {
-      const fn = mode === "login" ? api.login : api.register;
-      const data = await fn(email, password);
+      let data;
+      if (mode === "login") {
+        data = await api.login(email, password);
+      } else {
+        data = await api.register({
+          fullName,
+          username,
+          email,
+          phone,
+          password,
+          referralUsername: referralUsername || undefined,
+        });
+      }
       localStorage.setItem("ayd_token", data.token);
       onAuthed(data.token, data.user);
     } catch (e) {
@@ -38,8 +62,11 @@ function AuthScreen({ onAuthed }) {
     }
   };
 
+  const inputClass =
+    "w-full bg-[#F9FAFB] border border-[#E5E9F0] rounded-lg px-3.5 py-3 text-sm text-[#111827] outline-none focus:border-[#2563EB] mb-3";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F4F7FB] px-5">
+    <div className="min-h-screen flex items-center justify-center bg-[#F4F7FB] px-5 py-10">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-8 justify-center">
           <div className="w-9 h-9 rounded-xl bg-[#2563EB] flex items-center justify-center">
@@ -66,37 +93,98 @@ function AuthScreen({ onAuthed }) {
               Sign up
             </button>
           </div>
+
+          {mode === "register" && (
+            <>
+              <input
+                type="text"
+                placeholder="Full Name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className={inputClass}
+              />
+              <input
+                type="text"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.replace(/\s/g, ""))}
+                className={inputClass}
+              />
+            </>
+          )}
+
           <input
             type="email"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-[#F9FAFB] border border-[#E5E9F0] rounded-lg px-3.5 py-3 text-sm text-[#111827] outline-none focus:border-[#2563EB] mb-3"
+            className={inputClass}
           />
+
+          {mode === "register" && (
+            <>
+              <input
+                type="tel"
+                placeholder="Phone Number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                maxLength={11}
+                className={inputClass}
+              />
+              <input
+                type="text"
+                placeholder="Referral Username (optional)"
+                value={referralUsername}
+                onChange={(e) => setReferralUsername(e.target.value.replace(/\s/g, ""))}
+                className={inputClass}
+              />
+            </>
+          )}
+
           <input
             type="password"
-            placeholder="Password (min 8 characters)"
+            placeholder={mode === "register" ? "Password (min 8 characters)" : "Password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-[#F9FAFB] border border-[#E5E9F0] rounded-lg px-3.5 py-3 text-sm text-[#111827] outline-none focus:border-[#2563EB] mb-4"
+            className={inputClass}
           />
+
+          {mode === "register" && (
+            <>
+              <input
+                type="password"
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={inputClass}
+              />
+              <label className="flex items-start gap-2 mb-4 text-xs text-[#6B7280]">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I agree to the Terms and Conditions and Privacy Policy</span>
+              </label>
+            </>
+          )}
+
           {error && <div className="text-[#DC2626] text-xs mb-3">{error}</div>}
+
           <button
             onClick={submit}
-            disabled={busy || !email || password.length < 8}
+            disabled={busy || (mode === "login" ? !email || password.length < 8 : !registerValid)}
             className="w-full rounded-lg py-3 bg-[#2563EB] text-white font-semibold disabled:opacity-50"
           >
-            {busy ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
+            {busy ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
           </button>
         </div>
       </div>
     </div>
-  );
-}
+    );
 
-// --- Main store ------------------------------------------------------------
-
-function Store({ token, user, onLogout }) {
+} insin Main store ------------------------------------------------------functionfunction Store({ token, user, onLogout }) {
   const [balanceKobo, setBalanceKobo] = useState(user.wallet_balance);
   const [network, setNetwork] = useState(null);
   const [plans, setPlans] = useState([]);
