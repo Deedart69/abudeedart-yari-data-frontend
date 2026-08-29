@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from "react";
 import { Wifi, Wallet, Plus, Smartphone, ChevronRight, X, LogOut, Signal } from "lucide-react";
 import { api } from "./api";
@@ -190,6 +191,8 @@ function AuthScreen({ onAuthed }) {
 function Store({ token, user, onLogout }) {
   const [balanceKobo, setBalanceKobo] = useState(user.wallet_balance);
   const [network, setNetwork] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [category, setCategory] = useState("gifting");
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -230,14 +233,26 @@ function Store({ token, user, onLogout }) {
 
   useEffect(() => {
     if (!network) return;
+    api
+      .categories(token, network)
+      .then((data) => {
+        setCategories(data.categories);
+        const firstAvailable = data.categories.find((c) => c.available);
+        setCategory(firstAvailable ? firstAvailable.id : data.categories[0]?.id || "gifting");
+      })
+      .catch(() => setCategories([]));
+  }, [network, token]);
+
+  useEffect(() => {
+    if (!network || !category) return;
     setPlansLoading(true);
     setSelectedPlan(null);
     api
-      .plans(token, network)
+      .plans(token, network, category)
       .then((data) => setPlans(data.plans))
       .catch(() => showToast("Couldn't load plans — try again", "error"))
       .finally(() => setPlansLoading(false));
-  }, [network, token]);
+  }, [network, category, token]);
 
   const handleTopUp = async () => {
     const amt = parseInt(topUpAmount, 10);
@@ -260,12 +275,11 @@ function Store({ token, user, onLogout }) {
 
     setBusy(true);
     try {
-      const data = await api.buyData(token, { network, phone: phone.trim(), planCode: selectedPlan.code });
-      setBalanceKobo(data.wallet_balance);if (data.status === "success") {
+      const data = await api.buyData(token, { network, phone: phone.trim(), planCode: selectedPlan.code, category });
+      setBalanceKobo(data.wallet_balance);
+      if (data.status === "success") {
         showToast(`${selectedPlan.label} sent to ${phone.trim()}`);
-      } else if (data.status === "pending") {
-        showToast("Order is processing — check history shortly");
-      } else {
+      } else if (data.status === "pending") {} else {
         showToast(data.vtpass_message || "Purchase failed — you've been refunded", "error");
       }
       setSelectedPlan(null);
@@ -345,6 +359,29 @@ function Store({ token, user, onLogout }) {
             );
           })}
         </div>
+
+        {network && categories.length > 0 && (
+          <div className="flex gap-2 mb-5 overflow-x-auto">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => c.available && setCategory(c.id)}
+                disabled={!c.available}
+                className="px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors"
+                style={{
+                  borderColor: category === c.id ? activeNet.color : "#E5E9F0",
+                  backgroundColor: category === c.id ? activeNet.color : "white",
+                  color: category === c.id ? "white" : c.available ? "#374151" : "#B0B5BE",
+                  opacity: c.available ? 1 : 0.6,
+                  cursor: c.available ? "pointer" : "not-allowed",
+                }}
+              >
+                {c.label}
+                {!c.available && " (soon)"}
+              </button>
+            ))}
+          </div>
+        )}
 
         {network && (
           <>
