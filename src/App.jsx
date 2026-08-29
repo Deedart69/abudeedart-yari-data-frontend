@@ -1,6 +1,19 @@
-
 import React, { useState, useEffect, useCallback } from "react";
-import { Wifi, Wallet, Plus, Smartphone, ChevronRight, X, LogOut, Signal } from "lucide-react";
+import {
+  Wifi,
+  Wallet,
+  Plus,
+  Smartphone,
+  ChevronRight,
+  ChevronLeft,
+  X,
+  LogOut,
+  Signal,
+  Receipt,
+  Zap,
+  GraduationCap,
+  MessageSquare,
+} from "lucide-react";
 import { api } from "./api";
 
 const NETWORKS = [
@@ -8,6 +21,15 @@ const NETWORKS = [
   { id: "airtel", name: "Airtel", color: "#FF3B30", bg: "#FFEBEA" },
   { id: "glo", name: "Glo", color: "#00A651", bg: "#E6F7ED" },
   { id: "9mobile", name: "9mobile", color: "#00A99D", bg: "#E0F6F4" },
+];
+
+const SERVICES = [
+  { id: "data", label: "Buy Data", icon: Wifi, available: true },
+  { id: "airtime", label: "Buy Airtime", icon: Smartphone, available: true },
+  { id: "bills", label: "Pay Bills", icon: Receipt, available: false },
+  { id: "electricity", label: "Electricity", icon: Zap, available: false },
+  { id: "results", label: "Results Checker", icon: GraduationCap, available: false },
+  { id: "sms", label: "Bulk SMS", icon: MessageSquare, available: false },
 ];
 
 const fmt = (kobo) =>
@@ -190,6 +212,7 @@ function AuthScreen({ onAuthed }) {
 
 function Store({ token, user, onLogout }) {
   const [balanceKobo, setBalanceKobo] = useState(user.wallet_balance);
+  const [service, setService] = useState(null);
   const [network, setNetwork] = useState(null);
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState("gifting");
@@ -197,6 +220,7 @@ function Store({ token, user, onLogout }) {
   const [plansLoading, setPlansLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [phone, setPhone] = useState("");
+  const [airtimeAmount, setAirtimeAmount] = useState("");
   const [orders, setOrders] = useState([]);
   const [toast, setToast] = useState(null);
   const [topUpOpen, setTopUpOpen] = useState(false);
@@ -232,7 +256,7 @@ function Store({ token, user, onLogout }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!network) return;
+    if (!network || service !== "data") return;
     api
       .categories(token, network)
       .then((data) => {
@@ -241,10 +265,10 @@ function Store({ token, user, onLogout }) {
         setCategory(firstAvailable ? firstAvailable.id : data.categories[0]?.id || "gifting");
       })
       .catch(() => setCategories([]));
-  }, [network, token]);
+  }, [network, service, token]);
 
   useEffect(() => {
-    if (!network || !category) return;
+    if (!network || !category || service !== "data") return;
     setPlansLoading(true);
     setSelectedPlan(null);
     api
@@ -252,7 +276,16 @@ function Store({ token, user, onLogout }) {
       .then((data) => setPlans(data.plans))
       .catch(() => showToast("Couldn't load plans — try again", "error"))
       .finally(() => setPlansLoading(false));
-  }, [network, category, token]);
+  }, [network, category, service, token]);
+
+  const goBack = () => {
+    setService(null);
+    setNetwork(null);
+    setCategory("gifting");
+    setSelectedPlan(null);
+    setPhone("");
+    setAirtimeAmount("");
+  };
 
   const handleTopUp = async () => {
     const amt = parseInt(topUpAmount, 10);
@@ -268,7 +301,7 @@ function Store({ token, user, onLogout }) {
     }
   };
 
-  const handleBuy = async () => {
+  const handleBuyData = async () => {
     if (!selectedPlan) return showToast("Choose a data plan first", "error");
     if (phone.trim().length < 10) return showToast("Enter a valid phone number", "error");
     if (balanceKobo < selectedPlan.sale_naira * 100) return showToast("Insufficient wallet balance", "error");
@@ -279,7 +312,9 @@ function Store({ token, user, onLogout }) {
       setBalanceKobo(data.wallet_balance);
       if (data.status === "success") {
         showToast(`${selectedPlan.label} sent to ${phone.trim()}`);
-      } else if (data.status === "pending") {} else {
+      } else if (data.status === "pending") {
+        showToast("Order is processing — check history shortly");
+      } else {
         showToast(data.vtpass_message || "Purchase failed — you've been refunded", "error");
       }
       setSelectedPlan(null);
@@ -292,10 +327,38 @@ function Store({ token, user, onLogout }) {
     }
   };
 
+  const handleBuyAirtime = async () => {
+    if (!network) return showToast("Choose a network first", "error");
+    if (phone.trim().length < 10) return showToast("Enter a valid phone number", "error");
+    const amt = parseInt(airtimeAmount, 10);
+    if (!amt || amt < 50) return showToast("Minimum airtime is ₦50", "error");
+
+    setBusy(true);
+    try {
+      const data = await api.buyAirtime(token, { network, phone: phone.trim(), amountNaira: amt });
+      setBalanceKobo(data.wallet_balance);
+      if (data.status === "success") {
+        showToast(`₦${amt} airtime sent to ${phone.trim()}`);
+      } else if (data.status === "pending") {
+        showToast("Order is processing — check history shortly");
+      } else {
+        showToast(data.vtpass_message || "Purchase failed — you've been refunded", "error");
+      }
+      setPhone("");
+      setAirtimeAmount("");
+      refreshOrders();
+    } catch (e) {
+      showToast(e.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const activeNet = NETWORKS.find((n) => n.id === network);
   const totalGBToday = orders
     .filter((o) => o.status === "success" && new Date(o.created_at).toDateString() === new Date().toDateString())
     .length;
+  const activeService = SERVICES.find((s) => s.id === service);
 
   return (
     <div className="min-h-screen bg-[#F4F7FB] text-[#111827]">
@@ -315,12 +378,10 @@ function Store({ token, user, onLogout }) {
       </header>
 
       <main className="px-5 max-w-md mx-auto pb-16 pt-3">
-        {/* Balance + stats cards, like the reference screenshot */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button
             onClick={() => setTopUpOpen(true)}
-            className="bg-white rounded-2xl p-4 border border-[#E5E9F0] shadow-sm text-left"
-          >
+            className="bg-white rounded-2xl p-4 border border-[#E5E9F0] shadow-sm text-left">
             <div className="w-9 h-9 rounded-full bg-[#EAF1FF] flex items-center justify-center mb-3">
               <Wallet size={16} className="text-[#2563EB]" />
             </div>
@@ -336,116 +397,257 @@ function Store({ token, user, onLogout }) {
           </div>
         </div>
 
-        {/* Services grid — icon tiles like the reference */}
-        <div className="text-[13px] font-semibold text-[#374151] mb-3">Buy Data</div>
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {NETWORKS.map((n) => {
-            const active = n.id === network;
-            return (
-              <button
-                key={n.id}
-                onClick={() => setNetwork(n.id)}
-                className="bg-white rounded-2xl py-5 flex flex-col items-center gap-2.5 border shadow-sm transition-all"
-                style={{ borderColor: active ? n.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
-              >
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: n.bg }}
-                >
-                  <Wifi size={22} style={{ color: n.color }} strokeWidth={2.2} />
-                </div>
-                <span className="text-sm font-medium text-[#111827]">{n.name}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {network && categories.length > 0 && (
-          <div className="flex gap-2 mb-5 overflow-x-auto">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => c.available && setCategory(c.id)}
-                disabled={!c.available}
-                className="px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors"
-                style={{
-                  borderColor: category === c.id ? activeNet.color : "#E5E9F0",
-                  backgroundColor: category === c.id ? activeNet.color : "white",
-                  color: category === c.id ? "white" : c.available ? "#374151" : "#B0B5BE",
-                  opacity: c.available ? 1 : 0.6,
-                  cursor: c.available ? "pointer" : "not-allowed",
-                }}
-              >
-                {c.label}
-                {!c.available && " (soon)"}
-              </button>
-            ))}
-          </div>
+        {service === null && (
+          <>
+            <div className="text-[13px] font-semibold text-[#374151] mb-3">Services</div>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {SERVICES.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() =>
+                      s.available ? setService(s.id) : showToast(`${s.label} is coming soon`, "error")
+                    }
+                    className="bg-white rounded-2xl py-5 flex flex-col items-center gap-2.5 border border-[#E5E9F0] shadow-sm"
+                    style={{ opacity: s.available ? 1 : 0.55 }}
+                  >
+                    <div className="w-12 h-12 rounded-full bg-[#EAF1FF] flex items-center justify-center">
+                      <Icon size={22} className="text-[#2563EB]" strokeWidth={2.2} />
+                    </div>
+                    <span className="text-sm font-medium text-[#111827]">{s.label}</span>
+                    {!s.available && <span className="text-[10px] text-[#9CA3AF]">Coming soon</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {network && (
+        {service === "data" && (
           <>
-            <div className="mb-5">
-              <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
-                Recipient number
-              </label>
-              <div
-                className="flex items-center gap-2 rounded-xl px-3.5 py-3 border bg-white"
-                style={{ borderColor: phone ? activeNet.color : "#E5E9F0" }}
-              >
-                <Smartphone size={16} className="text-[#6B7280]" />
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
-                  placeholder="0803 123 4567"
-                  maxLength={11}
-                  className="bg-transparent outline-none flex-1 text-sm placeholder:text-[#9CA3AF]"
-                />
-              </div>
-            </div>
+            <button onClick={goBack} className="flex items-center gap-1 text-sm text-[#6B7280] mb-4">
+              <ChevronLeft size={16} /> Back to services
+            </button>
 
-            <div className="mb-3 text-[11px] uppercase tracking-widest text-[#6B7280]">
-              {activeNet.name} data plans
-            </div>
-
-            {plansLoading ? (
-              <div className="text-[#6B7280] text-sm mb-6">Loading live plans…</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2.5 mb-6">
-                {plans.map((p) => {
-                  const active = selectedPlan?.code === p.code;
-                  return (
-                    <button
-                      key={p.code}
-                      onClick={() => setSelectedPlan(p)}
-                      className="text-left rounded-xl p-3.5 border bg-white transition-all"
-                      style={{ borderColor: active ? activeNet.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
+            <div className="grid grid-cols-4 gap-2 mb-6">
+              {NETWORKS.map((n) => {
+                const active = n.id === network;
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => setNetwork(n.id)}
+                    className="relative rounded-xl py-3 flex flex-col items-center gap-1.5 border transition-all bg-white"
+                    style={{ borderColor: active ? n.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: n.bg }}
                     >
-                      <div className="font-bold text-base leading-tight mb-1.5">{p.label}</div>
-                      <div className="text-sm font-medium" style={{ color: active ? activeNet.color : "#111827" }}>
-                        ₦{p.sale_naira.toLocaleString()}
-                      </div>
-                    </button>
-                  );
-                })}
+                      <Wifi size={16} style={{ color: n.color }} />
+                    </div>
+                    <span className="text-[10px] font-medium">{n.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {network && categories.length > 0 && (
+              <div className="flex gap-2 mb-5 overflow-x-auto">
+                {categories.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => c.available && setCategory(c.id)}
+                    disabled={!c.available}
+                    className="px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors"
+                    style={{
+                      borderColor: category === c.id ? activeNet.color : "#E5E9F0",
+                      backgroundColor: category === c.id ? activeNet.color : "white",
+                      color: category === c.id ? "white" : c.available ? "#374151" : "#B0B5BE",
+                      opacity: c.available ? 1 : 0.6,
+                      cursor: c.available ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    {c.label}
+                    {!c.available && " (soon)"}
+                  </button>
+                ))}
               </div>
             )}
 
-            <button
-              onClick={handleBuy}
-              disabled={busy}
-              className="w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-60 text-white"
-              style={{ backgroundColor: activeNet.color }}
-            >
-              {busy ? "Sending…" : (
-                <>
-                  Buy {selectedPlan ? selectedPlan.label : "data"}
-                  {selectedPlan && <span>· ₦{selectedPlan.sale_naira.toLocaleString()}</span>}
-                  <ChevronRight size={16} />
-                </>
-              )}
+            {network && (
+              <>
+                <div className="mb-5">
+                  <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
+                    Recipient number
+                  </label>
+                  <div
+                    className="flex items-center gap-2 rounded-xl px-3.5 py-3 border bg-white"
+                    style={{ borderColor: phone ? activeNet.color : "#E5E9F0" }}
+                  >
+                    <Smartphone size={16} className="text-[#6B7280]" />
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                      placeholder="0803 123 4567"
+                      maxLength={11}
+                      className="bg-transparent outline-none flex-1 text-sm placeholder:text-[#9CA3AF]"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3 text-[11px] uppercase tracking-widest text-[#6B7280]">
+                  {activeNet.name} data plans
+                </div>
+
+                {plansLoading ? (
+                  <div className="text-[#6B7280] text-sm mb-6">Loading live plans…</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2.5 mb-6">
+                    {plans.map((p) => {
+                      const active = selectedPlan?.code === p.code;
+                      return (
+                        <button
+                          key={p.code}
+                          onClick={() => setSelectedPlan(p)}
+                          className="text-left rounded-xl p-3.5 border bg-white transition-all"
+                          style={{ borderColor: active ? activeNet.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
+                        >
+                          <div className="font-bold text-base leading-tight mb-1.5">{p.label}</div>
+                          <div className="text-sm font-medium" style={{ color: active ? activeNet.color : "#111827" }}>
+                            ₦{p.sale_naira.toLocaleString()}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleBuyData}
+                  disabled={busy}
+                  className="w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-60 text-white"
+                  style={{ backgroundColor: activeNet.color }}
+                >
+                  {busy ? "Sending…" : (
+                    <>
+                      Buy {selectedPlan ? selectedPlan.label : "data"}
+                      {selectedPlan && <span>· ₦{selectedPlan.sale_naira.toLocaleString()}</span>}
+                      <ChevronRight size={16} />
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </>
+        )}
+
+        {service === "airtime" && (
+          <>
+            <button onClick={goBack} className="flex items-center gap-1 text-sm text-[#6B7280] mb-4">
+              <ChevronLeft size={16} /> Back to services
             </button>
+
+            <div className="grid grid-cols-4 gap-2 mb-6">
+              {NETWORKS.map((n) => {
+                const active = n.id === network;
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => setNetwork(n.id)}
+                    className="relative rounded-xl py-3 flex flex-col items-center gap-1.5 border transition-all bg-white"
+                    style={{ borderColor: active ? n.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: n.bg }}
+                    >
+                      <Wifi size={16} style={{ color: n.color }} />
+                    </div>
+                    <span className="text-[10px] font-medium">{n.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {network && (
+              <>
+                <div className="mb-5">
+                  <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
+                    Recipient number
+                  </label>
+                  <div
+                    className="flex items-center gap-2 rounded-xl px-3.5 py-3 border bg-white"
+                    style={{ borderColor: phone ? activeNet.color : "#E5E9F0" }}
+                  >
+                    <Smartphone size={16} className="text-[#6B7280]" />
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                      placeholder="0803 123 4567"
+                      maxLength={11}
+                      className="bg-transparent outline-none flex-1 text-sm placeholder:text-[#9CA3AF]"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-5">
+                  <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
+                    Amount
+                  </label>
+                  <div className="flex gap-2 mb-3">
+                    {[100, 200, 500, 1000].map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setAirtimeAmount(String(v))}
+                        className="flex-1 rounded-lg py-2 text-xs font-medium border border-[#E5E9F0] bg-white hover:border-[#2563EB] transition-colors"
+                      >
+                        ₦{v}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    value={airtimeAmount}
+                    onChange={(e) => setAirtimeAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    className="w-full bg-white border border-[#E5E9F0] rounded-lg px-3.5 py-3 text-sm outline-none focus:border-[#2563EB]"
+                  />
+                </div>
+
+                <button
+                  onClick={handleBuyAirtime}
+                  disabled={busy}
+                  className="w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-60 text-white"
+                  style={{ backgroundColor: activeNet.color }}
+                >
+                  {busy ? "Sending…" : (
+                    <>
+                      Buy Airtime
+                      {airtimeAmount && <span>· ₦{airtimeAmount}</span>}
+                      <ChevronRight size={16} />
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </>
+        )}
+
+        {service && !["data", "airtime"].includes(service) && (
+          <>
+            <button onClick={goBack} className="flex items-center gap-1 text-sm text-[#6B7280] mb-4">
+              <ChevronLeft size={16} /> Back to services
+            </button>
+            <div className="bg-white rounded-2xl p-8 text-center border border-[#E5E9F0]">
+              <div className="text-4xl mb-3">🚧</div>
+              <div className="font-semibold mb-1">Coming soon</div>
+              <div className="text-sm text-[#6B7280]">
+                {activeService?.label} isn't available yet — check back soon.
+              </div>
+            </div>
           </>
         )}
 
