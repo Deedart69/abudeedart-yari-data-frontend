@@ -21,10 +21,10 @@ export const api = {
   fundInitialize: (token, amountNaira) =>
     request("/api/wallet/fund/initialize", { method: "POST", token, body: { amountNaira } }),
   fundVerify: (token, reference) => request(`/api/wallet/fund/verify/${reference}`, { token }),
- categories: (token, network) => request(`/api/purchase/categories/${network}`, { token }),
+  categories: (token, network) => request(`/api/purchase/categories/${network}`, { token }),
   plans: (token, network, category) =>
- buyData: (token, { network, phone, planCode, category }) =>
-    request("/api/purchase/data", { method: "POST", token, body: { network, phone, planCode, category } }),   request(`/api/purchase/plans/${network}?category=${category}`, { token }), 
-   method: "POST", token, body: { network, phone, planCode } }),
+    request(`/api/purchase/plans/${network}?category=${category}`, { token }),
+  buyData: (token, { network, phone, planCode, category }) =>
+    request("/api/purchase/data", { method: "POST", token, body: { network, phone, planCode, category } }),
   orders: (token) => request("/api/purchase/orders", { token }),
 };
