@@ -24,7 +24,7 @@ export const api = {
   categories: (token, network) => request(`/api/purchase/categories/${network}`, { token }),
   plans: (token, network, category) =>
     request(`/api/purchase/plans/${network}?category=${category}`, { token }),
-  buyData: (token, { network, phone, planCode, category }) =>
-    request("/api/purchase/data", { method: "POST", token, body: { network, phone, planCode, category } }),
+  buyAirtime: (token, { network, phone, amountNaira }) =>
+    request("/api/purchase/airtime", { method: "POST", token, body: { network, phone, amountNaira } }),
   orders: (token) => request("/api/purchase/orders", { token }),
 };
