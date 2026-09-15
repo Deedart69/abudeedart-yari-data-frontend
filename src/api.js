@@ -20,7 +20,8 @@ export const api = {
   balance: (token) => request("/api/wallet/balance", { token }),
   fundInitialize: (token, amountNaira) =>
     request("/api/wallet/fund/initialize", { method: "POST", token, body: { amountNaira } }),
-  fundVerify: (token, reference) => request(`/api/wallet/fund/verify/${reference}`, { token }),
+  requestDedicatedAccount: (token) => request("/api/wallet/dedicated-account/request", { method: "POST", token }),
+  getDedicatedAccount: (token) => request("/api/wallet/dedicated-account", { token }),
   categories: (token, network) => request(`/api/purchase/categories/${network}`, { token }),
   plans: (token, network, category) =>
     request(`/api/purchase/plans/${network}?category=${category}`, { token }),
