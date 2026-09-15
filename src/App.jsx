@@ -13,6 +13,7 @@ import {
   Zap,
   GraduationCap,
   MessageSquare,
+  Copy,
 } from "lucide-react";
 import { api } from "./api";
 
@@ -226,6 +227,8 @@ function Store({ token, user, onLogout }) {
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dedicatedAccount, setDedicatedAccount] = useState(null);
+  const [dedicatedLoading, setDedicatedLoading] = useState(false);
 
   const showToast = (msg, kind = "ok") => {
     setToast({ msg, kind });
@@ -278,6 +281,38 @@ function Store({ token, user, onLogout }) {
       .finally(() => setPlansLoading(false));
   }, [network, category, service, token]);
 
+  // When the funding modal is opened, check if the user already has a
+  // dedicated account, and poll briefly if one was just requested but
+  // hasn't come back from Paystack's webhook yet.
+  useEffect(() => {
+    if (!topUpOpen) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    const check = async () => {
+      try {
+        const data = await api.getDedicatedAccount(token);
+        if (cancelled) return;
+        if (data.account_number) {
+          setDedicatedAccount(data);
+          setDedicatedLoading(false);
+          return;
+        }
+      } catch {}
+      attempts += 1;
+      if (attempts < 6 && !cancelled) {
+        setTimeout(check, 3000);
+      } else if (!cancelled) {
+        setDedicatedLoading(false);
+      }
+    };
+    check();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [topUpOpen, token]);
+
   const goBack = () => {
     setService(null);
     setNetwork(null);
@@ -285,6 +320,20 @@ function Store({ token, user, onLogout }) {
     setSelectedPlan(null);
     setPhone("");
     setAirtimeAmount("");
+  };
+
+  const handleRequestAccount = async () => {
+    setDedicatedLoading(true);
+    try {
+      const data = await api.requestDedicatedAccount(token);
+      if (data.already_exists) {
+        setDedicatedAccount(data);
+        setDedicatedLoading(false);
+      }
+    } catch (e) {
+      showToast(e.message, "error");
+      setDedicatedLoading(false);
+    }
   };
 
   const handleTopUp = async () => {
@@ -381,7 +430,8 @@ function Store({ token, user, onLogout }) {
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button
             onClick={() => setTopUpOpen(true)}
-            className="bg-white rounded-2xl p-4 border border-[#E5E9F0] shadow-sm text-left">
+            className="bg-white rounded-2xl p-4 border border-[#E5E9F0] shadow-sm text-left"
+          >
             <div className="w-9 h-9 rounded-full bg-[#EAF1FF] flex items-center justify-center mb-3">
               <Wallet size={16} className="text-[#2563EB]" />
             </div>
@@ -442,325 +492,3 @@ function Store({ token, user, onLogout }) {
                   >
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: n.bg }}
-                    >
-                      <Wifi size={16} style={{ color: n.color }} />
-                    </div>
-                    <span className="text-[10px] font-medium">{n.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {network && categories.length > 0 && (
-              <div className="flex gap-2 mb-5 overflow-x-auto">
-                {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => c.available && setCategory(c.id)}
-                    disabled={!c.available}
-                    className="px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors"
-                    style={{
-                      borderColor: category === c.id ? activeNet.color : "#E5E9F0",
-                      backgroundColor: category === c.id ? activeNet.color : "white",
-                      color: category === c.id ? "white" : c.available ? "#374151" : "#B0B5BE",
-                      opacity: c.available ? 1 : 0.6,
-                      cursor: c.available ? "pointer" : "not-allowed",
-                    }}
-                  >
-                    {c.label}
-                    {!c.available && " (soon)"}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {network && (
-              <>
-                <div className="mb-5">
-                  <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
-                    Recipient number
-                  </label>
-                  <div
-                    className="flex items-center gap-2 rounded-xl px-3.5 py-3 border bg-white"
-                    style={{ borderColor: phone ? activeNet.color : "#E5E9F0" }}
-                  >
-                    <Smartphone size={16} className="text-[#6B7280]" />
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
-                      placeholder="0803 123 4567"
-                      maxLength={11}
-                      className="bg-transparent outline-none flex-1 text-sm placeholder:text-[#9CA3AF]"
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-3 text-[11px] uppercase tracking-widest text-[#6B7280]">
-                  {activeNet.name} data plans
-                </div>
-
-                {plansLoading ? (
-                  <div className="text-[#6B7280] text-sm mb-6">Loading live plans…</div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2.5 mb-6">
-                    {plans.map((p) => {
-                      const active = selectedPlan?.code === p.code;
-                      return (
-                        <button
-                          key={p.code}
-                          onClick={() => setSelectedPlan(p)}
-                          className="text-left rounded-xl p-3.5 border bg-white transition-all"
-                          style={{ borderColor: active ? activeNet.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
-                        >
-                          <div className="font-bold text-base leading-tight mb-1.5">{p.label}</div>
-                          <div className="text-sm font-medium" style={{ color: active ? activeNet.color : "#111827" }}>
-                            ₦{p.sale_naira.toLocaleString()}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleBuyData}
-                  disabled={busy}
-                  className="w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-60 text-white"
-                  style={{ backgroundColor: activeNet.color }}
-                >
-                  {busy ? "Sending…" : (
-                    <>
-                      Buy {selectedPlan ? selectedPlan.label : "data"}
-                      {selectedPlan && <span>· ₦{selectedPlan.sale_naira.toLocaleString()}</span>}
-                      <ChevronRight size={16} />
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-          </>
-        )}
-
-        {service === "airtime" && (
-          <>
-            <button onClick={goBack} className="flex items-center gap-1 text-sm text-[#6B7280] mb-4">
-              <ChevronLeft size={16} /> Back to services
-            </button>
-
-            <div className="grid grid-cols-4 gap-2 mb-6">
-              {NETWORKS.map((n) => {
-                const active = n.id === network;
-                return (
-                  <button
-                    key={n.id}
-                    onClick={() => setNetwork(n.id)}
-                    className="relative rounded-xl py-3 flex flex-col items-center gap-1.5 border transition-all bg-white"
-                    style={{ borderColor: active ? n.color : "#E5E9F0", borderWidth: active ? 2 : 1 }}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: n.bg }}
-                    >
-                      <Wifi size={16} style={{ color: n.color }} />
-                    </div>
-                    <span className="text-[10px] font-medium">{n.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {network && (
-              <>
-                <div className="mb-5">
-                  <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
-                    Recipient number
-                  </label>
-                  <div
-                    className="flex items-center gap-2 rounded-xl px-3.5 py-3 border bg-white"
-                    style={{ borderColor: phone ? activeNet.color : "#E5E9F0" }}
-                  >
-                    <Smartphone size={16} className="text-[#6B7280]" />
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))}
-                      placeholder="0803 123 4567"
-                      maxLength={11}
-                      className="bg-transparent outline-none flex-1 text-sm placeholder:text-[#9CA3AF]"
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-5">
-                  <label className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2 block">
-                    Amount
-                  </label>
-                  <div className="flex gap-2 mb-3">
-                    {[100, 200, 500, 1000].map((v) => (
-                      <button
-                        key={v}
-                        onClick={() => setAirtimeAmount(String(v))}
-                        className="flex-1 rounded-lg py-2 text-xs font-medium border border-[#E5E9F0] bg-white hover:border-[#2563EB] transition-colors"
-                      >
-                        ₦{v}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number"
-                    value={airtimeAmount}
-                    onChange={(e) => setAirtimeAmount(e.target.value)}
-                    placeholder="Enter amount"
-                    className="w-full bg-white border border-[#E5E9F0] rounded-lg px-3.5 py-3 text-sm outline-none focus:border-[#2563EB]"
-                  />
-                </div>
-
-                <button
-                  onClick={handleBuyAirtime}
-                  disabled={busy}
-                  className="w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-60 text-white"
-                  style={{ backgroundColor: activeNet.color }}
-                >
-                  {busy ? "Sending…" : (
-                    <>
-                      Buy Airtime
-                      {airtimeAmount && <span>· ₦{airtimeAmount}</span>}
-                      <ChevronRight size={16} />
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-          </>
-        )}
-
-        {service && !["data", "airtime"].includes(service) && (
-          <>
-            <button onClick={goBack} className="flex items-center gap-1 text-sm text-[#6B7280] mb-4">
-              <ChevronLeft size={16} /> Back to services
-            </button>
-            <div className="bg-white rounded-2xl p-8 text-center border border-[#E5E9F0]">
-              <div className="text-4xl mb-3">🚧</div>
-              <div className="font-semibold mb-1">Coming soon</div>
-              <div className="text-sm text-[#6B7280]">
-                {activeService?.label} isn't available yet — check back soon.
-              </div>
-            </div>
-          </>
-        )}
-
-        {orders.length > 0 && (
-          <div className="mt-10">
-            <div className="text-[13px] font-semibold text-[#374151] mb-3">Recent purchases</div>
-            <div className="flex flex-col gap-2">
-              {orders.slice(0, 8).map((o) => (
-                <div
-                  key={o.id}
-                  className="flex items-center justify-between rounded-xl px-3.5 py-3 border border-[#E5E9F0] bg-white"
-                >
-                  <div>
-                    <div className="text-sm font-medium">{o.plan_label} · {o.network}</div>
-                    <div className="text-[11px] text-[#6B7280]">{o.phone} · {o.status}</div>
-                  </div>
-                  <div className="text-xs text-[#6B7280]">{fmt(o.sale_price)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
-
-      {topUpOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-5 w-full max-w-sm border border-[#E5E9F0]">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-bold">Fund wallet</span>
-              <button onClick={() => setTopUpOpen(false)}>
-                <X size={18} className="text-[#6B7280]" />
-              </button>
-            </div>
-            <div className="flex gap-2 mb-3">
-              {[1000, 2000, 5000, 10000].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setTopUpAmount(String(v))}
-                  className="flex-1 rounded-lg py-2 text-xs border border-[#E5E9F0] hover:border-[#2563EB] transition-colors"
-                >
-                  ₦{v / 1000}k
-                </button>
-              ))}
-            </div>
-            <input
-              type="number"
-              value={topUpAmount}
-              onChange={(e) => setTopUpAmount(e.target.value)}
-              placeholder="Enter amount"
-              className="w-full bg-[#F9FAFB] border border-[#E5E9F0] rounded-lg px-3.5 py-3 text-sm outline-none focus:border-[#2563EB] mb-4"
-            />
-            <button onClick={handleTopUp} className="w-full rounded-lg py-3 bg-[#2563EB] text-white font-semibold">
-              Continue to Paystack
-            </button>
-          </div>
-        </div>
-      )}
-
-      {toast && (
-        <div
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-full text-sm font-medium z-50 shadow-lg"
-          style={{
-            backgroundColor: toast.kind === "error" ? "#FEF2F2" : "#F0FDF4",
-            color: toast.kind === "error" ? "#DC2626" : "#16A34A",
-            border: `1px solid ${toast.kind === "error" ? "#FCA5A5" : "#86EFAC"}`,
-          }}
-        >
-          {toast.msg}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function App() {
-  const [token, setToken] = useState(localStorage.getItem("ayd_token"));
-  const [user, setUser] = useState(null);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    if (!token) {
-      setChecking(false);
-      return;
-    }
-    api
-      .balance(token)
-      .then((data) => setUser({ wallet_balance: data.wallet_balance }))
-      .catch(() => {
-        localStorage.removeItem("ayd_token");
-        setToken(null);
-      })
-      .finally(() => setChecking(false));
-  }, [token]);
-
-  const handleAuthed = (tok, u) => {
-    setToken(tok);
-    setUser(u);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("ayd_token");
-    setToken(null);
-    setUser(null);
-  };
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-[#F4F7FB] flex items-center justify-center">
-        <div className="text-[#6B7280] text-sm tracking-widest animate-pulse">CONNECTING…</div>
-      </div>
-    );
-  }
-
-  if (!token || !user) return <AuthScreen onAuthed={handleAuthed} />;
-  return <Store token={token} user={user} onLogout={handleLogout} />;
-}
