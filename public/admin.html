@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pricing Admin — Abudeedart Yari Data</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #F4F7FB;
+    margin: 0;
+    padding: 16px;
+    color: #111827;
+  }
+  h1 { font-size: 18px; margin: 0 0 16px; }
+  .card {
+    background: white;
+    border: 1px solid #E5E9F0;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  input, select, button {
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #E5E9F0;
+  }
+  input, select { width: 100%; margin-bottom: 10px; background: #F9FAFB; }
+  button {
+    background: #2563EB;
+    color: white;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:disabled { opacity: 0.5; }
+  button.secondary { background: white; color: #2563EB; border: 1px solid #2563EB; }
+  .plan {
+    border: 1px solid #E5E9F0;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .plan-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .label { font-weight: 600; font-size: 13px; }
+  .meta { font-size: 11px; color: #6B7280; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .row input { margin-bottom: 0; flex: 1; }
+  .row button { width: auto; padding: 8px 14px; font-size: 12px; }
+  .inactive { opacity: 0.5; }
+  .profit { color: #16A34A; font-weight: 600; }
+  .status { font-size: 12px; margin-top: 8px; min-height: 16px; }
+  .status.error { color: #DC2626; }
+  .status.ok { color: #16A34A; }
+</style>
+</head>
+<body>
+  <h1>📊 Pricing Admin</h1>
+
+  <div class="card" id="loginCard">
+    <input id="adminKey" type="password" placeholder="Admin key" />
+    <input id="apiBase" type="text" placeholder="Backend URL (e.g. https://abudeedart-yari-data-backend.onrender.com)" />
+    <button onclick="saveAndLoad()">Unlock</button>
+    <div class="status" id="loginStatus"></div>
+  </div>
+
+  <div class="card" id="syncCard" style="display:none">
+    <button onclick="syncPlans()" id="syncBtn">🔄 Sync prices from VTpass</button>
+    <div class="status" id="syncStatus"></div>
+  </div>
+
+  <div class="card" id="filterCard" style="display:none">
+    <select id="networkFilter" onchange="loadPlans()">
+      <option value="">All networks</option>
+      <option value="mtn">MTN</option>
+      <option value="airtel">Airtel</option>
+      <option value="glo">Glo</option>
+      <option value="9mobile">9mobile</option>
+    </select>
+  </div>
+
+  <div id="plansList"></div>
+
+  <script>
+    function getBase() { return localStorage.getItem('admin_api_base') || ''; }
+    function getKey() { return localStorage.getItem('admin_key') || ''; }
+
+    function saveAndLoad() {
+      const key = document.getElementById('adminKey').value.trim();
+      const base = document.getElementById('apiBase').value.trim().replace(/\/$/, '');
+      if (!key || !base) {
+        document.getElementById('loginStatus').textContent = 'Enter both fields';
+        document.getElementById('loginStatus').className = 'status error';
+        return;
+      }
+      localStorage.setItem('admin_key', key);
+      localStorage.setItem('admin_api_base', base);
+      document.getElementById('syncCard').style.display = 'block';
+      document.getElementById('filterCard').style.display = 'block';
+      loadPlans();
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(getBase() + path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': getKey(),
+          ...(options.headers || {}),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    async function syncPlans() {
+      const btn = document.getElementById('syncBtn');
+      const status = document.getElementById('syncStatus');
+      btn.disabled = true;
+      status.textContent = 'Syncing… this can take a moment';
+      status.className = 'status';
+      try {
+        const data = await api('/api/admin/plans/sync', { method: 'POST' });
+        status.textContent = `Done — ${data.created} new, ${data.updated} updated` +
+          (data.errors.length ? `, ${data.errors.length} errors` : '');
+        status.className = 'status ok';
+        loadPlans();
+      } catch (e) {
+        status.textContent = e.message;
+        status.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadPlans() {
+      const network = document.getElementById('networkFilter').value;
+      const list = document.getElementById('plansList');
+      list.innerHTML = '<div class="card">Loading…</div>';
+      try {
+        const qs = network ? `?network=${network}` : '';
+        const data = await api('/api/admin/plans' + qs);
+        if (data.plans.length === 0) {
+          list.innerHTML = '<div class="card">No plans yet — tap Sync above.</div>';
+          return;
+        }
+        list.innerHTML = data.plans.map(p => `
+          <div class="card plan ${p.active ? '' : 'inactive'}" id="plan-${p.id}">
+            <div class="plan-top">
+              <span class="label">${p.network.toUpperCase()} — ${p.label}</span>
+              <span class="meta">${p.category}</span>
+            </div>
+            <div class="meta">Supplier: ₦${p.supplier_price_naira.toLocaleString()} · Selling: ₦${p.selling_price_naira.toLocaleString()} · <span class="profit">Profit: ₦${p.profit_naira.toLocaleString()}</span></div>
+            <div class="row">
+              <input type="number" id="price-${p.id}" value="${p.selling_price_naira}" step="0.01" />
+              <button onclick="savePrice('${p.id}')">Save</button>
+            </div>
+            <div class="row">
+              <button class="secondary" onclick="toggleActive('${p.id}', ${!p.active})">${p.active ? 'Deactivate' : 'Activate'}</button>
+            </div>
+            <div class="status" id="status-${p.id}"></div>
+          </div>
+        `).join('');
+      } catch (e) {
+        list.innerHTML = `<div class="card status error">${e.message}</div>`;
+      }
+    }
+
+    async function savePrice(id) {
+      const val = parseFloat(document.getElementById('price-' + id).value);
+      const status = document.getElementById('status-' + id);
+      try {
+        await api('/api/admin/plans/' + id, {
+          method: 'PATCH',
+          body: JSON.stringify({ selling_price_naira: val }),
+        });
+        status.textContent = 'Saved ✓';
+        status.className = 'status ok';
+        loadPlans();
+      } catch (e) {
+        status.textContent = e.message;
+        status.className = 'status error';
+      }
+    }
+
+    async function toggleActive(id, newActive) {
+      try {
+        await api('/api/admin/plans/' + id, {
+          method: 'PATCH',
+          body: JSON.stringify({ active: newActive }),
+        });
+        loadPlans();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    // Auto-unlock if already saved
+    if (getKey() && getBase()) {
+      document.getElementById('adminKey').value = getKey();
+      document.getElementById('apiBase').value = getBase();
+      document.getElementById('syncCard').style.display = 'block';
+      document.getElementById('filterCard').style.display = 'block';
+      loadPlans();
+    }
+  </script>
+</body>
+</html>
