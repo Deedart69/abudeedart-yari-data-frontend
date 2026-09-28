@@ -117,7 +117,9 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Request failed');
       return data;
-async function syncHarisData() {
+    }
+
+    async function syncHarisData() {
       const btn = document.getElementById('syncHarisBtn');
       const status = document.getElementById('syncHarisStatus');
       btn.disabled = true;
@@ -135,8 +137,6 @@ async function syncHarisData() {
         btn.disabled = false;
       }
     }
-
-    async function syncPlans() {    }
 
     async function syncPlans() {
       const btn = document.getElementById('syncBtn');
@@ -218,14 +218,6 @@ async function syncHarisData() {
       } catch (e) {
         alert(e.message);
       }
-    }
-
-    if (getKey() && getBase()) {
-      document.getElementById('adminKey').value = getKey();
-      document.getElementById('apiBase').value = getBase();
-      document.getElementById('syncCard').style.display = 'block';
-      document.getElementById('filterCard').style.display = 'block';
-      loadPlans();
     }
   </script>
 </body>
