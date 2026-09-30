@@ -89,21 +89,53 @@
   <script>
     function getBase() { return localStorage.getItem('admin_api_base') || ''; }
     function getKey() { return localStorage.getItem('admin_key') || ''; }
-
-    function saveAndLoad() {
+async function saveAndLoad() {
       const key = document.getElementById('adminKey').value.trim();
       const base = document.getElementById('apiBase').value.trim().replace(/\/$/, '');
+      const loginStatus = document.getElementById('loginStatus');
+
       if (!key || !base) {
-        document.getElementById('loginStatus').textContent = 'Enter both fields';
-        document.getElementById('loginStatus').className = 'status error';
+        loginStatus.textContent = 'Enter both fields';
+        loginStatus.className = 'status error';
         return;
       }
+
+      loginStatus.textContent = 'Checking key…';
+      loginStatus.className = 'status';
+
+      // Actually verify the key against the backend before unlocking —
+      // previously this just saved whatever was typed with no check,
+      // which is why a wrong/mistyped key silently "unlocked" the panel
+      // and every real request failed with 401 afterward.
+      try {
+        const res = await fetch(base + '/api/admin/plans', {
+          headers: { 'x-admin-key': key },
+        });
+        if (res.status === 401) {
+          loginStatus.textContent = 'Wrong admin key — check it against Render and try again';
+          loginStatus.className = 'status error';
+          return;
+        }
+        if (!res.ok) {
+          loginStatus.textContent = `Backend error (HTTP ${res.status}) — check the backend URL`;
+          loginStatus.className = 'status error';
+          return;
+        }
+      } catch (e) {
+        loginStatus.textContent = 'Could not reach that backend URL — check it\'s correct';
+        loginStatus.className = 'status error';
+        return;
+      }
+
       localStorage.setItem('admin_key', key);
       localStorage.setItem('admin_api_base', base);
+      loginStatus.textContent = 'Unlocked ✓';
+      loginStatus.className = 'status ok';
       document.getElementById('syncCard').style.display = 'block';
       document.getElementById('filterCard').style.display = 'block';
       loadPlans();
     }
+    
 
     async function api(path, options = {}) {
       const res = await fetch(getBase() + path, {
