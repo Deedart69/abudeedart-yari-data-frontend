@@ -20,11 +20,14 @@ export const api = {
   balance: (token) => request("/api/wallet/balance", { token }),
   fundInitialize: (token, amountNaira) =>
     request("/api/wallet/fund/initialize", { method: "POST", token, body: { amountNaira } }),
+  fundVerify: (token, reference) => request(`/api/wallet/fund/verify/${reference}`, { token }),
   requestDedicatedAccount: (token) => request("/api/wallet/dedicated-account/request", { method: "POST", token }),
   getDedicatedAccount: (token) => request("/api/wallet/dedicated-account", { token }),
   categories: (token, network) => request(`/api/purchase/categories/${network}`, { token }),
   plans: (token, network, category) =>
     request(`/api/purchase/plans/${network}?category=${category}`, { token }),
+  buyData: (token, { planId, phone }) =>
+    request("/api/purchase/data", { method: "POST", token, body: { planId, phone } }),
   buyAirtime: (token, { network, phone, amountNaira }) =>
     request("/api/purchase/airtime", { method: "POST", token, body: { network, phone, amountNaira } }),
   orders: (token) => request("/api/purchase/orders", { token }),
