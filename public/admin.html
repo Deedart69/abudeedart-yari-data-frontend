@@ -170,8 +170,28 @@ async function saveAndLoad() {
       }
     }
 
-    async function syncPlans() {
-      const btn = document.getElementById('syncBtn');
+    
+    async function deactivateVtpass() {
+      if (!confirm('This will hide ALL VTpass plans from customers, keeping only Haris Data. Continue?')) return;
+      const btn = document.getElementById('deactivateBtn');
+      const status = document.getElementById('deactivateStatus');
+      btn.disabled = true;
+      status.textContent = 'Working…';
+      status.className = 'status';
+      try {
+        const data = await api('/api/admin/plans/deactivate-vtpass', { method: 'POST' });
+        status.textContent = `Hidden ${data.deactivated} VTpass plans`;
+        status.className = 'status ok';
+        loadPlans();
+      } catch (e) {
+        status.textContent = e.message;
+        status.className = 'status error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function syncPlans() {  const btn = document.getElementById('syncBtn');
       const status = document.getElementById('syncStatus');
       btn.disabled = true;
       status.textContent = 'Syncing… this can take a moment';
