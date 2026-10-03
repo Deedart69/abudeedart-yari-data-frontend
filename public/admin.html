@@ -210,12 +210,10 @@ async function saveAndLoad() {
             <div class="meta">Supplier: ₦${p.supplier_price_naira.toLocaleString()} · Selling: ₦${p.selling_price_naira.toLocaleString()} · <span class="profit">Profit: ₦${p.profit_naira.toLocaleString()}</span></div>
             <div class="row">
               <input type="number" id="price-${p.id}" value="${p.selling_price_naira}" step="0.01" />
-              <button onclick="savePrice('${p.id}')">Save</button>
-            </div>
-            <div class="row">
-              <button class="secondary" onclick="toggleActive('${p.id}', ${!p.active})">${p.active ? 'Deactivate' : 'Activate'}</button>
-            </div>
-            <div class="status" id="status-${p.id}"></div>
+              <button onclick="syncHarisData()" id="syncHarisBtn" style="margin-top:10px">🔄 Sync prices from Haris Data</button>
+    <div class="status" id="syncHarisStatus"></div>
+    <button onclick="deactivateVtpass()" id="deactivateBtn" class="secondary" style="margin-top:10px">🚫 Hide all VTpass plans (keep only Haris Data)</button>
+    <div class="status" id="deactivateStatus"></div>
           </div>
         `).join('');
       } catch (e) {
